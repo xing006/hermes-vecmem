@@ -1,0 +1,4 @@
+name: sqlite-vec
+version: 0.1.0
+description: "Vector memory provider using sqlite-vec — semantic search over stored facts via SQLite vector extension."
+hooks: []
