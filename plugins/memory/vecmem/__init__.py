@@ -41,6 +41,8 @@ VECMEM_SCHEMA = {
         "  add <content> — Store a fact (auto-embedded)\n"
         "  delete <id> — Remove a fact\n"
         "  list [limit] — Recent facts\n"
+        "  build_index — Train IVF index for faster search (data > 100 items)\n"
+        "  set_probe <n> — Set IVF probe count (higher = more accurate but slower)\n"
         "  stats — Memory stats"
     ),
     "parameters": {
@@ -48,12 +50,13 @@ VECMEM_SCHEMA = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["search", "keyword", "add", "delete", "list", "stats"],
+                "enum": ["search", "keyword", "add", "delete", "list", "build_index", "set_probe", "stats"],
             },
             "content": {"type": "string", "description": "Fact content (required for 'add')."},
             "query": {"type": "string", "description": "Search query (required for 'search'/'keyword')."},
             "id": {"type": "integer", "description": "Fact ID (required for 'delete')."},
             "limit": {"type": "integer", "description": "Max results (default: 10)."},
+            "n": {"type": "integer", "description": "IVF probe count (for 'set_probe')."},
         },
         "required": ["action"],
     },
@@ -71,8 +74,22 @@ class VecMemProvider(MemoryProvider):
         self._min_score = float(self._config.get("min_score", 0.3))
         self._sync_interval = int(self._config.get("sync_interval", 3))
         self._turn_count = 0
-        # Accumulate user messages for batch extraction
         self._message_buffer: List[str] = []
+        # LLM extraction config
+        self._llm_extract = self._config.get("llm_extract", True)
+        self._llm_api_base = self._config.get("llm_api_base",
+                            self._config.get("api_base", "https://api.deepseek.com")).rstrip("/")
+        self._llm_api_key = self._config.get("llm_api_key",
+                            self._config.get("api_key", ""))
+        self._llm_model = self._config.get("llm_model", "deepseek-chat")
+        if not self._llm_api_key:
+            import os
+            self._llm_api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+        # LRU cache for prefetch results
+        self._lru_max = int(self._config.get("lru_size", 100))
+        self._lru_ttl = int(self._config.get("lru_ttl", 60))
+        self._lru_cache: dict = {}  # query_hash → (timestamp, result_string)
+        self._lru_order: list[str] = []  # ordered keys for LRU eviction
 
     @property
     def name(self) -> str:
@@ -139,6 +156,27 @@ class VecMemProvider(MemoryProvider):
             return ""
         if not query.strip():
             return ""
+
+        # LRU cache check
+        import hashlib, time
+        qhash = hashlib.sha256(query.encode("utf-8")).hexdigest()
+        now = time.time()
+
+        cached = self._lru_cache.get(qhash)
+        if cached is not None:
+            ts, result = cached
+            if now - ts < self._lru_ttl:
+                # Move to end (most recently used)
+                if qhash in self._lru_order:
+                    self._lru_order.remove(qhash)
+                self._lru_order.append(qhash)
+                logger.debug("LRU prefetch cache HIT: %.20s", query)
+                return result
+            else:
+                # Expired
+                del self._lru_cache[qhash]
+                self._lru_order.remove(qhash)
+
         try:
             embedding = self._embed.embed(query)
             results = self._store.search(embedding, limit=self._top_k)
@@ -150,7 +188,17 @@ class VecMemProvider(MemoryProvider):
                 if score < self._min_score:
                     continue
                 lines.append(f"  • {r['content']} (score: {score:.2f})")
-            return "\n".join(lines) if len(lines) > 1 else ""
+            result = "\n".join(lines) if len(lines) > 1 else ""
+
+            # Store in LRU cache
+            self._lru_cache[qhash] = (now, result)
+            self._lru_order.append(qhash)
+            # Evict oldest if over limit
+            while len(self._lru_order) > self._lru_max:
+                oldest = self._lru_order.pop(0)
+                self._lru_cache.pop(oldest, None)
+
+            return result
         except Exception as e:
             logger.warning("vecmem prefetch failed: %s", e)
             return ""
@@ -188,73 +236,149 @@ class VecMemProvider(MemoryProvider):
     def _extract_facts_from_buffer(self) -> List[str]:
         """Extract concise factual statements from buffered messages.
 
-        Uses heuristic patterns rather than an LLM to keep it fast and free.
+        Uses LLM extraction when available (llm_extract=True + API key),
+        falls back to regex heuristics otherwise.
         """
+        if not self._message_buffer:
+            return []
+
+        # Try LLM extraction first
+        if self._llm_extract and self._llm_api_key:
+            try:
+                facts = self._extract_with_llm()
+                if facts:
+                    return facts
+            except Exception as e:
+                logger.debug("LLM extraction failed, falling back to regex: %s", e)
+
+        # Fallback: regex heuristics
+        return self._extract_with_regex()
+
+    def _extract_with_llm(self) -> List[str]:
+        """Call LLM to extract concise facts from buffered messages.
+
+        Returns a list of fact strings, or empty list if nothing to extract.
+        """
+        import json
+        import httpx
+
+        conversation = "\n".join(
+            f"用户: {msg}" for msg in self._message_buffer
+        )
+
+        prompt = (
+            "你是一个记忆提取助手。从以下用户对话中，提取所有可以长期记忆的事实性信息。\n\n"
+            "包括但不限于：\n"
+            "- 项目路径、文件位置\n"
+            "- 技术栈偏好（语言、框架、工具）\n"
+            "- 配置信息（服务器、端口、账号）\n"
+            "- API Key / Token（只记类型，不记具体值）\n"
+            "- 工作习惯、个人偏好\n"
+            "- 重要的人名、项目名\n\n"
+            "规则：\n"
+            "1. 每个事实用简洁的一句话表达\n"
+            "2. 只提取明确陈述的事实，不猜测\n"
+            "3. API Key/Token 只记\"已配置 xxx\"，不记原文\n"
+            "4. 如果没有值得记忆的内容，返回空数组\n"
+            "5. 返回 JSON 格式：[\"事实1\", \"事实2\"]\n\n"
+            f"对话内容：\n{conversation}"
+        )
+
+        resp = httpx.post(
+            f"{self._llm_api_base}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self._llm_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self._llm_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 500,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"].strip()
+
+        # Parse JSON from LLM response
+        # Try direct JSON parse first
+        try:
+            facts = json.loads(content)
+            if isinstance(facts, list):
+                return [f.strip() for f in facts if f.strip()]
+        except json.JSONDecodeError:
+            pass
+
+        # Try extracting JSON array from markdown code block
+        import re
+        m = re.search(r'\[.*?\]', content, re.DOTALL)
+        if m:
+            try:
+                facts = json.loads(m.group(0))
+                if isinstance(facts, list):
+                    return [f.strip() for f in facts if f.strip()]
+            except json.JSONDecodeError:
+                pass
+
+        # Last resort: split by newlines, filter
+        lines = [l.strip().lstrip("- ").lstrip("* ") for l in content.split("\n")
+                 if l.strip() and not l.strip().startswith(("```", "json"))]
+        return lines[:10]
+
+    def _extract_with_regex(self) -> List[str]:
+        """Fallback: extract facts using regex heuristics."""
         import re
         facts: List[str] = []
         seen = set()
 
-        # Pattern 1: Windows/Unix paths
         path_pattern = re.compile(
             r'(?:路径|目录|在|地址|位置)[：:\s]*([a-zA-Z]:[/\\][^\s,，。；;]{5,})'
             r'|([a-zA-Z]:[/\\][^\s,，。；;]{5,})'
         )
-
-        # Pattern 2: Preferences (用/偏好/喜欢 + noun)
         pref_pattern = re.compile(
             r'(?:用|使用|偏好|喜欢|默认)(?:的|是)?[：:\s]*([^，。,\.]{2,40})'
         )
-
-        # Pattern 3: Config statements (设/配置/设置 + value)
         config_pattern = re.compile(
             r'(?:设|设置|配置|改为|改成|切换)[：:\s]*([^，。,\.]{3,60})'
         )
-
-        # Pattern 4: Key/token patterns
         key_pattern = re.compile(
             r'(key|token|密钥|密码|ap[pi]_key|api_key|PAT|令牌)[：:\s]*["\'`]?([a-zA-Z0-9_\-]{8,})["\'`]?',
             re.IGNORECASE,
         )
-
-        # Pattern 5: General facts (I use / I prefer / my X is)
         general_pattern = re.compile(
             r'(?:我(?:的|用|在|有|是))([^，。！？\n]{4,60})'
         )
 
         for msg in self._message_buffer:
-            # Paths
             for m in path_pattern.finditer(msg):
                 fact = m.group(1) or m.group(2)
                 if fact and fact not in seen:
                     seen.add(fact)
                     facts.append(f"路径: {fact.strip()}")
 
-            # Config
             for m in config_pattern.finditer(msg):
                 fact = m.group(1).strip()
                 if fact and fact not in seen:
                     seen.add(fact)
                     facts.append(fact)
 
-            # Preferences
             for m in pref_pattern.finditer(msg):
                 fact = m.group(1).strip()
                 if fact and fact not in seen and len(fact) > 4:
                     seen.add(fact)
                     facts.append(f"偏好: {fact}")
 
-            # Keys/tokens (store masked version only)
             for m in key_pattern.finditer(msg):
                 key_type = m.group(1)
                 if key_type and key_type not in seen:
                     seen.add(key_type)
                     facts.append(f"已配置 {key_type}")
 
-            # General facts
             for m in general_pattern.finditer(msg):
                 fact = m.group(1).strip()
                 if fact and fact not in seen and len(fact) > 6:
-                    # Deduplicate with path facts
                     if not any(f.startswith("路径:") and f.endswith(fact[:20]) for f in facts):
                         seen.add(fact)
                         facts.append(fact)
@@ -303,6 +427,10 @@ class VecMemProvider(MemoryProvider):
                 return self._handle_list(args)
             elif action == "stats":
                 return self._handle_stats()
+            elif action == "build_index":
+                return self._handle_build_index()
+            elif action == "set_probe":
+                return self._handle_set_probe(args)
             else:
                 return json.dumps({"error": f"Unknown action: {action}"})
         except Exception as e:
@@ -356,6 +484,17 @@ class VecMemProvider(MemoryProvider):
         import json
         stats = self._store.stats()
         return json.dumps(stats)
+
+    def _handle_build_index(self) -> str:
+        import json
+        result = self._store.build_index(force=True)
+        return json.dumps(result)
+
+    def _handle_set_probe(self, args: dict) -> str:
+        import json
+        n = int(args.get("n", 2))
+        self._store.set_ivf_probe(n)
+        return json.dumps({"status": "ok", "probe": n})
 
 
 # ------------------------------------------------------------------ #
