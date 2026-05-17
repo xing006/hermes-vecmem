@@ -74,7 +74,7 @@ class VecStore:
 
     def initialize(self) -> None:
         """Open DB, load vec extension, create tables."""
-        self._db = sqlite3.connect(self._db_path)
+        self._db = sqlite3.connect(self._db_path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
