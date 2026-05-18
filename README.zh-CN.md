@@ -1,22 +1,38 @@
 # Hermes VecMem
 
-**Hermes Agent 向量记忆插件** — 基于 sqlite-vec 的语义搜索记忆库。
+<p align="center">
+  <a href="README.md"><img src="https://img.shields.io/badge/Lang-English-lightgrey?style=for-the-badge" alt="English"></a>
+  <a href="https://github.com/xing006/hermes-vecmem/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://github.com/xing006/hermes-vecmem"><img src="https://img.shields.io/badge/GitHub-hermes--vecmem-181717?style=for-the-badge&logo=github" alt="GitHub"></a>
+</p>
 
-## 这是什么？
+**Hermes Agent 向量记忆插件** — 基于 sqlite-vec 的语义搜索记忆库。零外部进程，纯 SQLite 扩展。
 
-一个可插拔的 [Hermes Agent](https://hermes-agent.nousresearch.com) 记忆插件。把记忆存为向量嵌入，按**语义相似度**（而非关键词匹配）检索。
-
-基于 [sqlite-vec](https://github.com/asg017/sqlite-vec) — 零额外进程，纯 SQLite 扩展。
+---
 
 ## 特性
 
-- **语义搜索** — 通过向量相似度找到含义相近的记忆
-- **FTS5 关键词搜索** — 精确匹配兜底
-- **自动提取** — 每 N 轮从对话中自动提取事实（支持 LLM 提取 + 正则兜底）
-- **记忆镜像** — 内置 `memory` 工具的写入自动同步到向量库
-- **维度自适应** — 自动探测嵌入维度（384/1024/1536/...），**模型切换时自动重建向量表**
-- **嵌入缓存** — 相同文本重复调用走缓存，省 API 费用
-- **三级降级** — API → 本地模型 → TF-IDF 特征哈希，稳健降级
+| 能力 | 说明 |
+|------|------|
+| **语义搜索** | 通过向量相似度找到含义相近的记忆，而非仅关键词匹配 |
+| **FTS5 关键词搜索** | 精确匹配兜底 — `vecmem keyword query="..."` |
+| **自动提取** | 每 N 轮从对话中自动提取事实（LLM 提取 + 正则兜底） |
+| **记忆镜像** | 内置 `memory` 工具的写入自动同步到向量库 |
+| **维度自适应** | 自动探测嵌入维度（384/1024/1536/...），**模型切换时自动重建向量表** |
+| **嵌入缓存** | 相同文本重复调用走缓存，省 API 费用 |
+| **三级降级** | API → 本地模型 → TF-IDF 特征哈希，稳健降级 |
+
+---
+
+## 架构
+
+```
+用户消息 → sync_turn() → LLM/正则提取事实 → 嵌入 → 存储
+                                               ↓
+下一轮 → prefetch() → 嵌入查询 → 向量搜索 → top-k → system prompt
+```
+
+---
 
 ## 安装
 
@@ -39,6 +55,8 @@ pip install -r requirements.txt
 ```bash
 bash install.sh
 ```
+
+---
 
 ## 配置
 
@@ -67,7 +85,7 @@ memory:
 |------|------|------|------|------|
 | API | `embed_mode: api` | httpx | 取决于模型（1024/1536） | ⭐⭐⭐⭐⭐ |
 | 本地 | `embed_mode: local` | sentence-transformers | 384（all-MiniLM-L6-v2） | ⭐⭐⭐⭐ |
-| 降级 | API/本地失败时自动 | 无 | 384 | ⭐⭐⭐ |
+| 降级 | API/本地失败时自动 | 无 | 384（特征哈希） | ⭐⭐⭐ |
 
 ### 本地嵌入（可选）
 
@@ -79,8 +97,6 @@ memory:
 需要安装：`pip install sentence-transformers`
 
 ### LLM 提取
-
-从对话中提取事实时，默认使用 LLM（效果优于正则），失败时自动降级到正则提取：
 
 ```yaml
     llm_extract: true          # 启用
@@ -96,6 +112,8 @@ memory:
 3. 清空嵌入缓存和 IVF 索引
 4. 用新维度重建向量表
 5. 保留文本记忆不变
+
+---
 
 ## 使用方法
 
@@ -116,6 +134,8 @@ memory:
 | `vecmem list limit=N` | 列出最近 |
 | `vecmem stats` | 统计 |
 
+---
+
 ## 项目结构
 
 ```
@@ -133,13 +153,7 @@ hermes-vecmem/
 └── .gitignore
 ```
 
-## 工作原理
-
-```
-用户消息 → sync_turn() → LLM/正则提取事实 → 嵌入 → 存储
-                                                  ↓
-下一轮 → prefetch() → 嵌入查询 → 向量搜索 → top-k → system prompt
-```
+---
 
 ## 与官方 holographic 对比
 
@@ -151,6 +165,8 @@ hermes-vecmem/
 | 维度迁移 | ✅ 自动重建 | ❌ |
 | 依赖 | sqlite-vec + httpx | 无（numpy 可选） |
 | 嵌入 | API/本地/降级 | 无嵌入 |
+
+---
 
 ## 协议
 

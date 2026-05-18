@@ -1,24 +1,38 @@
 # Hermes VecMem
 
-**Vector memory provider for Hermes Agent** — semantic search over stored facts using sqlite-vec.
+<p align="center">
+  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/Lang-中文-red?style=for-the-badge" alt="中文"></a>
+  <a href="https://github.com/xing006/hermes-vecmem/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://github.com/xing006/hermes-vecmem"><img src="https://img.shields.io/badge/GitHub-hermes--vecmem-181717?style=for-the-badge&logo=github" alt="GitHub"></a>
+</p>
 
-> 中文版见 [README.zh-CN.md](README.zh-CN.md)
+**Vector memory provider for [Hermes Agent](https://hermes-agent.nousresearch.com)** — semantic search over stored facts using sqlite-vec. Zero external processes, pure SQLite extension.
 
-## What is this?
-
-A pluggable memory provider for [Hermes Agent](https://hermes-agent.nousresearch.com) that stores memories as vector embeddings and retrieves them by **semantic similarity**, not just keyword matching.
-
-Built on [sqlite-vec](https://github.com/asg017/sqlite-vec) — zero external processes, pure SQLite extension.
+---
 
 ## Features
 
-- **Semantic search** — find related memories by meaning via vector similarity
-- **FTS5 keyword search** — exact match fallback
-- **Auto-extraction** — extract facts from conversation every N turns (LLM + regex fallback)
-- **Memory mirroring** — built-in `memory` tool writes auto-sync to vector store
-- **Adaptive dimensions** — auto-detects embedding dimension (384/1024/1536/...), **auto-rebuilds on model change**
-- **Embedding cache** — deduplicates API calls for repeated text
-- **Three-tier degradation** — API → local model → TF-IDF feature hashing, never crashes
+| Capability | Description |
+|------------|-------------|
+| **Semantic search** | Find related memories by meaning via vector similarity, not just keywords |
+| **FTS5 keyword search** | Exact match fallback — `vecmem keyword query="..."` |
+| **Auto-extraction** | Extract facts from conversation every N turns (LLM + regex fallback) |
+| **Memory mirroring** | Built-in `memory` tool writes auto-sync to vector store |
+| **Adaptive dimensions** | Auto-detects embedding dimension (384/1024/1536/...), **auto-rebuilds on model change** |
+| **Embedding cache** | Deduplicates API calls for repeated text |
+| **Three-tier degradation** | API → local model → TF-IDF feature hashing — never crashes |
+
+---
+
+## Architecture
+
+```
+User message → sync_turn() → LLM/regex extract facts → embed → store
+                                                  ↓
+Next turn → prefetch() → embed query → vec_search → top-k → system prompt
+```
+
+---
 
 ## Installation
 
@@ -41,6 +55,8 @@ pip install -r requirements.txt
 ```bash
 bash install.sh
 ```
+
+---
 
 ## Configuration
 
@@ -69,7 +85,7 @@ memory:
 |------|--------|------|-----------|---------|
 | API | `embed_mode: api` | httpx | model-dependent (1024/1536) | ⭐⭐⭐⭐⭐ |
 | Local | `embed_mode: local` | sentence-transformers | 384 (all-MiniLM-L6-v2) | ⭐⭐⭐⭐ |
-| Fallback | auto when API/local fail | none | 384 | ⭐⭐⭐ |
+| Fallback | auto when API/local fail | none | 384 (feature hashing) | ⭐⭐⭐ |
 
 ### Local embedding (optional)
 
@@ -81,8 +97,6 @@ memory:
 Requires: `pip install sentence-transformers`
 
 ### LLM extraction
-
-Facts are extracted from conversation using LLM (more accurate than regex), falling back to regex on failure:
 
 ```yaml
     llm_extract: true
@@ -98,6 +112,8 @@ When switching embedding models (e.g., from `text-embedding-v3` 1024d to `all-Mi
 3. Clears the embedding cache and IVF index
 4. Rebuilds the vector table with the new dimension
 5. Preserves all text memories (dimension-independent)
+
+---
 
 ## Usage
 
@@ -118,6 +134,8 @@ When switching embedding models (e.g., from `text-embedding-v3` 1024d to `all-Mi
 | `vecmem list limit=N` | Recent facts |
 | `vecmem stats` | Memory statistics |
 
+---
+
 ## Project Structure
 
 ```
@@ -128,22 +146,16 @@ hermes-vecmem/
 │   ├── embed.py                 ← Embedding engine
 │   ├── plugin.yaml              ← Plugin metadata
 │   └── README.md                ← Plugin-level docs
-├── README.md                    ← This file
-├── README.zh-CN.md              ← Chinese docs
+├── README.md                    ← This file (English)
+├── README.zh-CN.md              ← Chinese version
 ├── install.sh                   ← Automated install script
 ├── requirements.txt             ← Python dependencies
 └── .gitignore
 ```
 
-## How it Works
+---
 
-```
-User message → sync_turn() → LLM/regex extract facts → embed → store
-                                                    ↓
-Next turn → prefetch() → embed query → vec_search → top-k → system prompt
-```
-
-## Comparison
+## Comparison vs Official Holographic
 
 | Feature | vecmem | holographic (official) |
 |---------|--------|----------------------|
@@ -153,6 +165,8 @@ Next turn → prefetch() → embed query → vec_search → top-k → system pro
 | Dimension migration | ✅ auto-rebuild | ❌ |
 | Dependencies | sqlite-vec + httpx | None (numpy optional) |
 | Embedding | API/local/fallback | None (no embeddings) |
+
+---
 
 ## License
 
