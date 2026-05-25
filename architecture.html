@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VecMem 架构图 — Hermes Agent 向量记忆插件</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #020617;
+  color: #e2e8f0;
+  font-family: 'JetBrains Mono', monospace;
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+.container {
+  max-width: 1100px;
+  width: 100%;
+}
+.header {
+  margin-bottom: 30px;
+}
+.header h1 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pulse-dot {
+  width: 10px; height: 10px;
+  background: #22d3ee;
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px #22d3ee; }
+  50% { opacity: 0.5; box-shadow: 0 0 2px #22d3ee; }
+}
+.header .subtitle {
+  color: #94a3b8;
+  font-size: 13px;
+  margin-top: 6px;
+}
+.diagram-card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 30px;
+  overflow-x: auto;
+}
+svg { display: block; margin: 0 auto; }
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 24px;
+}
+.card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 18px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.card-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.card-dot.cyan { background: #22d3ee; }
+.card-dot.emerald { background: #34d399; }
+.card-dot.violet { background: #a78bfa; }
+.card h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+.card ul { list-style: none; }
+.card li {
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 2px 0;
+}
+.card li::before { content: "• "; color: #475569; }
+.footer {
+  margin-top: 20px;
+  text-align: center;
+  color: #475569;
+  font-size: 11px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1><span class="pulse-dot"></span> VecMem 架构图</h1>
+    <div class="subtitle">Hermes Agent 向量记忆插件 — 基于 sqlite-vec</div>
+  </div>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 1000 560" width="1000" height="560">
+      <!-- Grid background -->
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <!-- Arrowhead -->
+        <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 Z" fill="#22d3ee"/>
+        </marker>
+        <marker id="arrow-emerald" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 Z" fill="#34d399"/>
+        </marker>
+        <marker id="arrow-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 Z" fill="#a78bfa"/>
+        </marker>
+        <marker id="arrow-slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 Z" fill="#94a3b8"/>
+        </marker>
+      </defs>
+      <rect width="1000" height="560" fill="url(#grid)"/>
+
+      <!-- ===== ARROWS (drawn first so they're behind boxes) ===== -->
+
+      <!-- Hermes Agent → VecMem Provider (sync_turn / on_memory_write) -->
+      <line x1="180" y1="120" x2="180" y2="240" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)" stroke-dasharray="4,3"/>
+      <text x="75" y="185" fill="#22d3ee" font-size="7" opacity="0.7">sync_turn / on_memory_write</text>
+
+      <!-- VecMem Provider → Hermes Agent (prefetch) -->
+      <line x1="320" y1="260" x2="320" y2="140" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)" stroke-dasharray="4,3"/>
+      <text x="335" y="205" fill="#34d399" font-size="7" opacity="0.7">prefetch (top-k 记忆)</text>
+
+      <!-- VecMem Provider → EmbedEngine (embed) -->
+      <line x1="250" y1="310" x2="100" y2="380" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+      <text x="85" y="350" fill="#a78bfa" font-size="7" opacity="0.7">embed()</text>
+
+      <!-- VecMem Provider → VecStore (search / store) -->
+      <line x1="350" y1="310" x2="480" y2="380" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+      <text x="375" y="350" fill="#a78bfa" font-size="7" opacity="0.7">search() / add()</text>
+
+      <!-- Hermes → Built-in Memory -->
+      <line x1="620" y1="120" x2="720" y2="200" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+      <text x="635" y="170" fill="#94a3b8" font-size="7" opacity="0.7">memory 工具</text>
+
+      <!-- Built-in Memory → VecMem (on_memory_write mirror) -->
+      <line x1="720" y1="230" x2="500" y2="310" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-cyan)" stroke-dasharray="4,3"/>
+      <text x="575" y="275" fill="#fbbf24" font-size="7" opacity="0.7">on_memory_write 镜像</text>
+
+      <!-- EmbedEngine → LLM API -->
+      <line x1="100" y1="440" x2="100" y2="510" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+      <text x="110" y="480" fill="#fb923c" font-size="7" opacity="0.7">httpx 请求</text>
+
+      <!-- VecStore → sqlite-vec DB -->
+      <line x1="530" y1="430" x2="630" y2="500" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+
+      <!-- ===== BOXES ===== -->
+
+      <!-- Boundary: Hermes Agent (cyan) -->
+      <rect x="40" y="50" width="920" height="80" rx="8" fill="none" stroke="#22d3ee" stroke-width="1" stroke-dasharray="6,3" opacity="0.3"/>
+      <text x="50" y="70" fill="#22d3ee" font-size="8" opacity="0.6">Hermes Agent (主进程)</text>
+
+      <!-- Hermes Agent -->
+      <rect x="100" y="80" width="180" height="40" rx="6" fill="rgba(8,51,68,0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="140" y="105" fill="#22d3ee" font-size="12" font-weight="600">AI Agent 会话循环</text>
+
+      <!-- Built-in Memory -->
+      <rect x="620" y="200" width="180" height="36" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="655" y="222" fill="#94a3b8" font-size="11">内置记忆 (关键词)</text>
+
+      <!-- Boundary: VecMem Plugin (violet) -->
+      <rect x="40" y="210" width="500" height="200" rx="8" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="6,3" opacity="0.3"/>
+      <text x="50" y="230" fill="#a78bfa" font-size="8" opacity="0.6">VecMem 插件 (plugins/memory/vecmem/)</text>
+
+      <!-- VecMem Provider (main box) -->
+      <rect x="140" y="245" width="260" height="60" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="215" y="270" fill="#a78bfa" font-size="12" font-weight="600">VecMemProvider</text>
+      <text x="155" y="290" fill="#c4b5fd" font-size="8">sync_turn  auto-extract  prefetch  vecmem 工具</text>
+
+      <!-- EmbedEngine -->
+      <rect x="40" y="380" width="130" height="55" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="55" y="402" fill="#34d399" font-size="10" font-weight="600">EmbedEngine</text>
+      <text x="48" y="418" fill="#6ee7b7" font-size="7">API 嵌入</text>
+      <text x="48" y="430" fill="#a7f3d0" font-size="7">/ 本地 / fallback</text>
+
+      <!-- VecStore -->
+      <rect x="430" y="380" width="160" height="55" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="465" y="402" fill="#a78bfa" font-size="10" font-weight="600">VecStore</text>
+      <text x="440" y="418" fill="#c4b5fd" font-size="7">向量搜索 (sqlite-vec)</text>
+      <text x="440" y="430" fill="#ddd6fe" font-size="7">FTS5 关键词 / 嵌入缓存</text>
+
+      <!-- Embedding API (external) -->
+      <rect x="40" y="510" width="170" height="36" rx="6" fill="rgba(30,41,59,0.5)" stroke="#fb923c" stroke-width="1.5"/>
+      <text x="50" y="532" fill="#fb923c" font-size="10">LLM 嵌入 API</text>
+      <text x="170" y="532" fill="#fdba74" font-size="8">(DeepSeek/OpenAI)</text>
+
+      <!-- sqlite-vec DB (external) -->
+      <rect x="570" y="500" width="160" height="36" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="585" y="522" fill="#a78bfa" font-size="10">SQLite (vecmem.db)</text>
+      <text x="610" y="522" fill="#ddd6fe" font-size="7">📦 向量 + 缓存</text>
+
+      <!-- ===== LEGEND ===== -->
+      <rect x="40" y="555" width="920" height="1" fill="#1e293b"/>
+      <text x="40" y="575" fill="#475569" font-size="8">图例:</text>
+      <line x1="80" y1="572" x2="110" y2="572" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="115" y="575" fill="#94a3b8" font-size="7">同步调用</text>
+      <line x1="170" y1="572" x2="200" y2="572" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="205" y="575" fill="#94a3b8" font-size="7">异步/镜像</text>
+      <rect x="280" y="567" width="12" height="10" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="296" y="575" fill="#94a3b8" font-size="7">插件组件</text>
+      <rect x="370" y="567" width="12" height="10" rx="2" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1"/>
+      <text x="386" y="575" fill="#94a3b8" font-size="7">外部/内置</text>
+    </svg>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot cyan"></div>
+        <h3>数据流</h3>
+      </div>
+      <ul>
+        <li>对话 → sync_turn 提取事实 → 嵌入 → 存储</li>
+        <li>下一轮 → prefetch 向量召回 → 注入 system prompt</li>
+        <li>memory 工具写入 → 自动镜像到向量库</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot emerald"></div>
+        <h3>三级降级</h3>
+      </div>
+      <ul>
+        <li>API 模式 (DeepSeek/OpenAI 嵌入)</li>
+        <li>本地模式 (sentence-transformers)</li>
+        <li>Hash 降级 (永不崩溃)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot violet"></div>
+        <h3>混合检索</h3>
+      </div>
+      <ul>
+        <li>向量搜索 — 语义匹配</li>
+        <li>FTS5 搜索 — 关键词精确匹配</li>
+        <li>嵌入缓存 — 相同文本零成本命中</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">
+    github.com/xing006/hermes-vecmem &nbsp;·&nbsp; MIT License
+  </div>
+</div>
+</body>
+</html>
