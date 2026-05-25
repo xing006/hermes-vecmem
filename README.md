@@ -72,6 +72,7 @@ memory:
     model: text-embedding-v3           # Qwen embedding (1024d)
     top_k: 5                           # prefetch results per turn
     min_score: 0.3                     # minimum similarity threshold
+    governance_mode: light             # light | advanced; light is the personal-use default
     llm_extract: true                  # enable LLM-based fact extraction
     llm_model: deepseek-chat           # model for LLM extraction
     sync_interval: 3                   # auto-extract every N turns
@@ -130,9 +131,12 @@ When switching embedding models (e.g., from `text-embedding-v3` 1024d to `all-Mi
 | `vecmem add content=...` | Store a fact |
 | `vecmem search query=...` | Semantic search |
 | `vecmem keyword query=...` | Keyword search |
-| `vecmem delete id=N` | Delete a fact |
 | `vecmem list limit=N` | Recent facts |
+| `vecmem archive id=N` | Hide a fact without deleting it |
+| `vecmem restore id=N` | Restore an archived fact |
 | `vecmem stats` | Memory statistics |
+
+Light mode is the default visible tool surface. Set `governance_mode: advanced` to expose preview/review/audit/plan/index actions: `preview_add`, `review_list`, `approve`, `reject`, `preview_archive`, `preview_restore`, `preview_approve`, `preview_reject`, `create_plan`, `get_plan`, `list_plans`, `apply_plan`, `events`, `build_index`, and `set_probe`.
 
 ---
 
