@@ -19,3 +19,19 @@ Thumbs.db
 *.db
 *.db-wal
 *.db-shm
+
+# Local planning / publishing drafts (not part of distributable plugin)
+docs/PROJECT_PLAN.md
+article.md
+商用建议.md
+
+# Reports
+reports/
+
+# Cover images
+cover*.png
+cover*.svg
+
+# Test files
+test_vecmem_*.py
+tests/
