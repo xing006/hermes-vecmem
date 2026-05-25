@@ -1,0 +1,14 @@
+{
+  "name": "vecmem-manager",
+  "label": "VecMem 管理",
+  "description": "可视化管理 vecmem 记忆：查看、过滤、审计、归档、恢复、审批",
+  "icon": "Database",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/vecmem-manager",
+    "position": "after:cron"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}
