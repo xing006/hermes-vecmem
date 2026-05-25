@@ -72,6 +72,7 @@ memory:
     model: text-embedding-v3           # 通义千问嵌入（1024维）
     top_k: 5                           # 每轮 prefetch 条数
     min_score: 0.3                     # 最小相似度阈值
+    governance_mode: light             # light | advanced；个人使用默认 light
     llm_extract: true                  # 启用 LLM 提取事实
     llm_model: deepseek-chat           # LLM 提取用的模型
     sync_interval: 3                   # 每 N 轮自动提取一次
@@ -130,9 +131,12 @@ memory:
 | `vecmem add content=...` | 存入事实 |
 | `vecmem search query=...` | 语义搜索 |
 | `vecmem keyword query=...` | 关键词搜索 |
-| `vecmem delete id=N` | 删除 |
 | `vecmem list limit=N` | 列出最近 |
+| `vecmem archive id=N` | 归档隐藏，不硬删除 |
+| `vecmem restore id=N` | 恢复已归档记忆 |
 | `vecmem stats` | 统计 |
+
+Light mode 是默认可见工具面，适合个人日常使用。设置 `governance_mode: advanced` 后才暴露治理动作：`preview_add`、`review_list`、`approve`、`reject`、`preview_archive`、`preview_restore`、`preview_approve`、`preview_reject`、`create_plan`、`get_plan`、`list_plans`、`apply_plan`、`events`、`build_index`、`set_probe`。
 
 ---
 
